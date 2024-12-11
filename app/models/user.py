@@ -15,6 +15,6 @@ class UserStatus(enum.Enum):
 class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
-    username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
-    phone_number: Mapped[str] = mapped_column(String(15), unique=True, index=True)
-    status: Mapped[UserStatus] = mapped_column(default=UserStatus.active)
+    username: Mapped[str] = mapped_column(String(10), unique=True, index=True)
+    phone_number: Mapped[str] = mapped_column(String(10), unique=True, index=True)
+    status: Mapped[UserStatus] = mapped_column(default=UserStatus.inactive)

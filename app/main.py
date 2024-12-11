@@ -1,20 +1,21 @@
 # main.py
-
-import json
+import logging
 import os
-from typing import Any, Optional
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from fastapi.security import OAuth2PasswordBearer
 import uvicorn
 from app.api.router import api_router
 from app.core.config import core_settings
+from fastapi.middleware.cors import CORSMiddleware
+from jose import JWTError, jwt
 
 
-# is_prod = any("run" in arg.lower() for arg in sys.argv)
-# current_env = ".env.staging" if is_prod else ".env"
-# load_dotenv(current_env)
+# configuration
+SECRET_KEY = "my-super-duper--secret-key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30000
 
 
 app = FastAPI(
@@ -23,51 +24,47 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # allows all methods
+    allow_headers=["*"],  # allows all headers
+)
 
-# Handle generic exceptions
-@app.exception_handler(HTTPException)
-async def general_exception_handler(request: Request, exc: HTTPException):
+
+# configure logging (optional)
+logging.basicConfig(level=logging.ERROR)
+logger = logging.getLogger(__name__)
+
+
+# handler for validation errors (HTTP 422)
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # logger.error(f"Unexpected error: {exc}", exc_info=True)
+    # print(request.headers)
+    print(await request.body())
     return JSONResponse(
-        status_code=exc.status_code,
+        status_code=422,
         content={
-            "success": False,
-            "message": str(exc.detail),
+            "detail": "Validation error",
+            "errors": [{"field": error["loc"][-1], "message": error["msg"]} for error in exc.errors()],
         },
     )
 
 
-class StandardResponse(BaseModel):
-    success: bool
-    data: Optional[Any] = None
-    error: Optional[str] = None
+# global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    # rog the error
+    logger.error(f"Unexpected error: {exc}", exc_info=True)
 
-
-@app.middleware("http")
-async def format_response(request: Request, call_next):
-    # Call the next middleware/route handler
-    response = await call_next(request)
-
-    # If response is already JSONResponse, get the body
-    if isinstance(response, JSONResponse):
-        response_body = response.body.decode()
-        import json
-
-        response_data = json.loads(response_body)
-
-        # If response is already formatted, return as is
-        if isinstance(response_data, dict) and "success" in response_data:
-            return response
-
-        # Format the response
-        formatted_response = {
-            "success": 200 <= response.status_code < 300,
-            "data": response_data,
-            "error": None if 200 <= response.status_code < 300 else "Request failed",
-        }
-
-        return JSONResponse(content=formatted_response, status_code=response.status_code, headers=dict(response.headers))
-
-    return response
+    # return a generic error response
+    return JSONResponse(
+        status_code=500,
+        content={"message": "An unexpected error occurred. Please try again later."},
+    )
 
 
 app.include_router(api_router, prefix="/api")

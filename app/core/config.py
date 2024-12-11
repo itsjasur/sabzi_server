@@ -2,8 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class CoreSettings(BaseSettings):
-    environment: str = "development"
-    app_name: str = "Sabzi development server"
+    environment: str
+    app_name: str
     database_url: str
     debug: bool = True
 
