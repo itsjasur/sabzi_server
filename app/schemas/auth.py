@@ -1,17 +1,17 @@
-from pydantic import BaseModel
+from typing import Optional
+from pydantic import BaseModel, Field
 
 
-class UserCreate(BaseModel):
-    phone_numbeer: str
-    verification_code: str
-    username: str
+class AuthSendCodeRequest(BaseModel):
+    phone_number: str
 
 
-class UserLogin(BaseModel):
-    phone_numbeer: str
-    verification_code: str
+class AuthVerifyCodeRequest(BaseModel):
+    phone_number: str
+    verification_code: str = Field(..., min_length=1, max_length=6)
+    verification_token: str = Field(..., min_length=1, max_length=50)
 
 
-class Token(BaseModel):
+class AuthVerifyCodeResponse(BaseModel):
     access_token: str
-    token_type: str
+    is_new_user: Optional[bool] = False

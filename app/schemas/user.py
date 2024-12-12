@@ -15,7 +15,7 @@ class UserPhoneNumberUpdate(BaseModel):
 # for returning user information
 class UserResponse(BaseModel):
     id: int
-    username: str
+    username: str | None
     phone_number: str
     status: UserStatus
 

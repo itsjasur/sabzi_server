@@ -12,12 +12,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from jose import JWTError, jwt
 
 
-# configuration
-SECRET_KEY = "my-super-duper--secret-key"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30000
-
-
 app = FastAPI(
     title=core_settings.app_name,
     description="Your API Description",
