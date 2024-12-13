@@ -6,18 +6,14 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
 from app.core.database import Base
-from app.models.user import *  # Imports all models
-from app.core.config import core_settings  # settings config
+from app.models.user import *  # imports all models
+from app.models.item import *
 
-
-load_dotenv()
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
+load_dotenv()
 config = context.config
-
-# config.set_main_option("sqlalchemy.url", core_settings.database_url)
-
 # Set the sqlalchemy url from environment variable
 config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL"))
 

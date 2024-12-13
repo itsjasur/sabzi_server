@@ -20,9 +20,9 @@ class Item(Base):
     __tablename__ = "items"
     id: Mapped[int] = mapped_column(primary_key=True)
     key: Mapped[str] = mapped_column(String(50), unique=True, index=True)
-    price: Mapped[Optional[float]]
-    price_negotiable: Mapped[bool] = mapped_column(insert_default=True)
-    status: Mapped[ItemStatus] = mapped_column(insert_default=ItemStatus.active)
+    price: Mapped[Optional[float]] = mapped_column(nullable=True)
+    price_negotiable: Mapped[bool] = mapped_column(default=True)
+    status: Mapped[ItemStatus] = mapped_column(default=ItemStatus.active)
 
     category_id: Mapped[int] = mapped_column(index=True)  # from categories table, but not foreign key
 
@@ -34,15 +34,16 @@ class Item(Base):
     latitude: Mapped[float] = mapped_column(DECIMAL(10, 8))  # -90 to 90
     longitude: Mapped[float] = mapped_column(DECIMAL(11, 8))  # -180 to 180
 
-    created_at: Mapped[datetime] = mapped_column(insert_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(default=func.now())
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_onupdate=func.now())
 
 
-class ItemImages(Base):
+class ItemImage(Base):
     __tablename__ = "item_images"
     id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[Optional[int]] = mapped_column(index=True, nullable=True)
     key: Mapped[str] = mapped_column(String(256), unique=True, index=True)
-    item_id: Mapped[int] = mapped_column(index=True)
-    filename: Mapped[str] = mapped_column(String(512))
-    source: Mapped[str] = mapped_column(String(50), insert_default="server")  # server origin e.g google cloud, firebase inhouse server, etc....
-    created_at: Mapped[datetime] = mapped_column(insert_default=func.now())
+    source: Mapped[str] = mapped_column(String(56), default="local")  # server origin e.g google cloud, firebase inhouse server, etc....
+    extension: Mapped[str] = mapped_column(String(16))
+    bucket_path: Mapped[str] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())

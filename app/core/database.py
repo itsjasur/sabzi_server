@@ -1,12 +1,11 @@
 import os
 from typing import Annotated
 from dotenv import load_dotenv
-from fastapi import Depends, HTTPException, logger, status
+from fastapi import Depends, HTTPException, status
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from app.core.config import core_settings
 from sqlalchemy.orm import Session
 
 
@@ -40,6 +39,7 @@ DB = Annotated[Session, Depends(db_conn)]
 
 # removes all migration guides
 # rm alembic/versions/*.py
+# rm alembic/versions/*
 
 # Generate a migration
 # alembic revision --autogenerate -m "description of changes"

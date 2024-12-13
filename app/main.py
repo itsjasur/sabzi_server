@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 from app.api.router import api_router
 from app.core.config import core_settings
@@ -27,6 +28,9 @@ app.add_middleware(
     allow_headers=["*"],  # allows all headers
 )
 
+
+# mounts static files
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 # configure logging (optional)
 logging.basicConfig(level=logging.ERROR)
