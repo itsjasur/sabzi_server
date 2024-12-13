@@ -26,8 +26,8 @@ class Item(Base):
 
     category_id: Mapped[int] = mapped_column(index=True)  # from categories table, but not foreign key
 
-    title: Mapped[str] = mapped_column(String(100))
-    description: Mapped[str] = mapped_column(String(500))
+    title: Mapped[str] = mapped_column(String(256))
+    description: Mapped[str] = mapped_column(String(1024))
 
     user_id: Mapped[int] = mapped_column(index=True)
 
