@@ -10,7 +10,6 @@ import uvicorn
 from app.api.router import api_router
 from app.core.config import core_settings
 from fastapi.middleware.cors import CORSMiddleware
-from jose import JWTError, jwt
 
 
 app = FastAPI(
@@ -18,6 +17,7 @@ app = FastAPI(
     description="Your API Description",
     version="1.0.0",
 )
+
 
 # CORS middleware
 app.add_middleware(

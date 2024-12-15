@@ -11,5 +11,5 @@ router = APIRouter()
 
 
 @router.get("/me", response_model=UserResponse, status_code=status.HTTP_200_OK)
-async def get_user_by_id(user: AUTH_ME):
+def get_user_by_id(user: AUTH_ME):
     return user

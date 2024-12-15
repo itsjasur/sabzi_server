@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import random
 import secrets
 from fastapi import APIRouter, HTTPException
@@ -64,15 +64,15 @@ def login(data: AuthSendCodeRequest, db: DB):
 @router.post("/verify-code", response_model=AuthVerifyCodeResponse)
 def verify_code(data: AuthVerifyCodeRequest, db: DB):
 
-    stmt = select(UserVerification).where(
-        UserVerification.verification_token == data.verification_token,
-        UserVerification.attempts > 0,
-        UserVerification.expires_at > datetime.now(timezone.utc),
-    )
+    stmt = select(UserVerification).where(UserVerification.verification_token == data.verification_token, UserVerification.attempts > 0)
+
     verification: UserVerification | None = db.execute(stmt).scalar()
 
     if not verification:
         raise HTTPException(status_code=400, detail="Invalid verification request")
+
+    if verification.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Verification code is expired")
 
     # checks the code
     if verification.verification_code != data.verification_code:

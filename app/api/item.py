@@ -1,12 +1,15 @@
 import shutil
-from pathlib import Path
+from typing import Annotated, Optional
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
+from sqlalchemy import delete, select, update
 from app.core.database import DB
 from app.core.utils.auth import AUTH_ME
-from app.models.item import Item, ItemImage, ItemStatus
+from app.models.item import Item, ItemImage
 import secrets
 from app.core.config import core_settings
+from pathlib import Path
+
 
 router = APIRouter()
 
@@ -16,20 +19,20 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # max file size (10MB)
 MAX_ITEM_IMAGE_FILE_SIZE = 10 * 1024 * 1024  # 10MB in bytes
+MAX_IMAGES_PER_ITEM = 10
 
 
-router = APIRouter()
+def save_item_images(item_key: str, file: UploadFile, upload_dir: Path) -> tuple[str, str]:
+    """Saves the image and returns file key and extension."""
+    # validate_image(file)
 
-
-async def save_image(file: UploadFile, upload_dir: Path) -> tuple[str, str]:
-    """Helper function to save image file and return key and extension"""
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
 
-    file.file.seek(0, 2)
+    file.file.seek(0, 2)  # moves to end of file, to check file size without loading it to memory
     if file.file.tell() > MAX_ITEM_IMAGE_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large")
-    file.file.seek(0)
+    file.file.seek(0)  # resets file pointer to beginning
 
     file_key = secrets.token_hex(16)
     file_extension = Path(file.filename).suffix.lower()
@@ -37,23 +40,45 @@ async def save_image(file: UploadFile, upload_dir: Path) -> tuple[str, str]:
     if file_extension not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
         raise HTTPException(status_code=400, detail="Invalid file type")
 
-    # Try-except needed here as this is file system operation, not DB
+    #  full directory path for the item
+    item_dir = upload_dir / item_key
     try:
-        file_path = upload_dir / f"{file_key}{file_extension}"
+        #  directory and any necessary parent directories
+        item_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create directory: {str(e)}") from e
+
+    # full file path
+    file_path = item_dir / f"{file_key}{file_extension}"
+
+    try:
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error saving file: {str(e)}")
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save image: {str(e)}") from e
 
     return file_key, file_extension
 
 
-@router.post("/add-item", status_code=status.HTTP_201_CREATED)
-async def add_item(
+def remove_item_images_directory(item_key: str, upload_dir: Path) -> None:
+    """Removes the entire directory for an item_key and all its contents."""
+    item_dir = upload_dir / item_key
+    if not item_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Directory for item '{item_key}' not found")
+    try:
+        # shutil.rmtree to remove directory and all its contents
+        shutil.rmtree(item_dir)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to remove directory: {str(e)}") from e
+
+
+@router.post("/add-item", status_code=status.HTTP_201_CREATED, description="Adds new item")
+def add_item(
     user: AUTH_ME,
     db: DB,
-    files: list[UploadFile] = File(...),
-    price: float = Form(...),
+    # files: Optional[list[UploadFile]] = File(default=[]),
+    files: Optional[list[UploadFile]] = File(default=None),
+    price: float = Form(..., gt=0),
     price_negotiable: bool = Form(...),
     category_id: int = Form(...),
     title: str = Form(...),
@@ -61,31 +86,41 @@ async def add_item(
     latitude: float = Form(...),
     longitude: float = Form(...),
 ):
-    if not files:
-        raise HTTPException(status_code=400, detail="At least one image required")
 
-    if len(files) > 10:
-        raise HTTPException(status_code=400, detail="Maximum 10 images allowed")
+    # if files is None:
+    #     files = []
 
-    item = Item(
-        user_id=user.id,
-        key=secrets.token_hex(16),
-        price=price,
-        price_negotiable=price_negotiable,
-        category_id=category_id,
-        title=title,
-        description=description,
-        latitude=latitude,
-        longitude=longitude,
-    )
+    files = files or []
 
-    db.add(item)
-    db.flush()  # gets ID without committing
+    if len(files) > MAX_IMAGES_PER_ITEM:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_IMAGES_PER_ITEM} images allowed")
 
-    for file in files:
-        try:
-            file_key, file_extension = await save_image(file, UPLOAD_DIR)
+    item_key = None
+    try:
+        item = Item(
+            user_id=user.id,
+            key=secrets.token_hex(16),
+            price=price,
+            price_negotiable=price_negotiable,
+            category_id=category_id,
+            title=title,
+            description=description,
+            latitude=latitude,
+            longitude=longitude,
+        )
 
+        db.add(item)
+        db.flush()  # gets ID without committing
+
+        item_key = item.key
+
+        uploaded_files = []
+        for file in files:
+            file_key = secrets.token_hex(16)
+            file_key, file_extension = save_item_images(item.key, file, UPLOAD_DIR)
+            uploaded_files.append((file_key, file_extension))
+
+        for file_key, file_extension in uploaded_files:
             item_image = ItemImage(
                 item_id=item.id,
                 key=file_key,
@@ -94,89 +129,13 @@ async def add_item(
                 bucket_path="assets/item_images",
             )
             db.add(item_image)
-        finally:
-            file.file.close()
 
-    db.commit()
-    return {"success": True, "item_id": item.id}
+        db.commit()
+        return {"success": True, "item_id": item.id}
 
-
-class ItemUpdateInfo(BaseModel):
-    item_id: int
-    price: float = Field(..., gt=0)
-    price_negotiable: bool
-    status: ItemStatus
-    category_id: int
-    title: str = Field(..., min_length=1, max_length=256)
-    description: str = Field(None, min_length=1, max_length=1024)
-
-
-@router.post("/update-item")
-async def update_item(user: AUTH_ME, db: DB, data: ItemUpdateInfo):
-    item = db.query(Item).filter(Item.id == data.item_id, Item.user_id == user.id).first()
-
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-
-    for key, value in data.model_dump(exclude={"item_id"}).items():
-        setattr(item, key, value)
-
-    db.commit()
-    return {"success": True, "message": "Item updated successfully"}
-
-
-class ImageDelete(BaseModel):
-    item_id: int
-    image_key: str
-
-
-@router.post("/delete-image")
-async def delete_image(user: AUTH_ME, db: DB, data: ImageDelete):
-    item = db.query(Item).filter(Item.id == data.item_id, Item.user_id == user.id).first()
-
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-
-    image_count = db.query(ItemImage).filter(ItemImage.item_id == data.item_id).count()
-    if image_count <= 1:
-        raise HTTPException(status_code=400, detail="Cannot delete last image")
-
-    image = db.query(ItemImage).filter(ItemImage.key == data.image_key, ItemImage.item_id == data.item_id).first()
-
-    if not image:
-        raise HTTPException(status_code=404, detail="Image not found")
-
-    # Try-except needed here as this is file system operation, not DB
-    try:
-        file_path = UPLOAD_DIR / f"{data.image_key}{image.extension}"
-        if file_path.exists():
-            file_path.unlink()
+    # if any upload fails, deletes all previously uploaded files and rolls back db changes
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")
-
-    db.delete(image)
-    db.commit()
-    return {"success": True, "message": "Image deleted successfully"}
-
-
-@router.post("/add-image")
-async def add_image(user: AUTH_ME, db: DB, file: UploadFile = File(...), item_id: int = Form(...)):
-    item = db.query(Item).filter(Item.id == item_id, Item.user_id == user.id).first()
-
-    if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-
-    image_count = db.query(ItemImage).filter(ItemImage.item_id == item_id).count()
-    if image_count >= 10:
-        raise HTTPException(status_code=400, detail="Maximum 10 images reached")
-
-    file_key, file_extension = await save_image(file, UPLOAD_DIR)
-
-    item_image = ItemImage(
-        item_id=item_id, key=file_key, extension=file_extension, source=core_settings.item_image_upload_source, bucket_path="assets/item_images"
-    )
-
-    db.add(item_image)
-    db.commit()
-
-    return {"success": True, "message": "Image added successfully", "image_key": file_key}
+        db.rollback()
+        if item_key is not None:
+            remove_item_images_directory(item_key, UPLOAD_DIR)
+        raise

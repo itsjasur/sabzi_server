@@ -28,27 +28,37 @@ def create_access_token(data: dict):
     return encoded_jwt
 
 
-async def authorize_me(credentials: Annotated[HTTPAuthorizationCredentials, Security(security)], db: DB) -> User:
+# def authorize_me(credentials: Annotated[HTTPAuthorizationCredentials, Security(security)], db: DB) -> User:
 
-    credentials_exception = HTTPException(
-        status_code=401,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+#     credentials_exception = HTTPException(
+#         status_code=401,
+#         detail="Could not validate credentials",
+#         headers={"WWW-Authenticate": "Bearer"},
+#     )
 
-    try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("user_id")
-        if user_id is None:
-            raise credentials_exception
+#     try:
+#         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+#         user_id: str = payload.get("user_id")
+#         if user_id is None:
+#             raise credentials_exception
 
-    except JWTError:
-        raise credentials_exception
+#     except JWTError:
+#         raise credentials_exception
 
-    user = db.get(User, user_id)
+#     user = db.get(User, user_id)
+
+#     if user is None:
+#         raise credentials_exception
+
+#     return user
+
+
+def authorize_me(db: DB) -> User:
+
+    user = db.get(User, 1)
 
     if user is None:
-        raise credentials_exception
+        raise HTTPAuthorizationCredentials()
 
     return user
 
