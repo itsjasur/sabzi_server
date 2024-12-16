@@ -4,42 +4,22 @@ from typing import Optional
 from app.models.item import ItemStatus
 
 
-# base schema with common attributes
-# class ItemAddOrUpdateRequest(BaseModel):
-#     id: Optional[int] = None
-#     price: Optional[float] = None
-#     price_negotiable: bool = True
-#     category_id: int
-#     image_keys: list[str] = []
-#     title: str = Field(..., min_length=1, max_length=100)
-#     description: str = Field(..., min_length=1, max_length=500)
-#     latitude: float = Field(..., ge=-90, le=90, description="Latitude between -90 and 90")
-#     longitude: float = Field(..., ge=-180, le=180, description="Longitude between -180 and 180")
+class ItemAddRequest(BaseModel):
+    price: Optional[float] = Field(default=None, ge=0)
+    price_negotiable: bool = True
+    category_id: int
+    image_keys: list[str] = []
+    title: str = Field(..., min_length=1, max_length=100)
+    description: str = Field(..., min_length=1, max_length=500)
+    latitude: float = Field(..., ge=-90, le=90, description="Latitude between -90 and 90")
+    longitude: float = Field(..., ge=-180, le=180, description="Longitude between -180 and 180")
 
 
-# schema for updating an existing item
-class ItemUpdate(BaseModel):
-    key: Optional[str] = Field(None, min_length=1, max_length=50)
-    price: Optional[float] = None
-    price_negotiable: Optional[bool] = None
-    status: Optional[ItemStatus] = None
-    category_id: Optional[int] = None
-    title: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = Field(None, min_length=1, max_length=500)
-
-
-# schema for reading an item (response model)
-class ItemResponse(BaseModel):
-    id: int
-    status: ItemStatus
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-# @router.post("/delete", response_model=dict, status_code=status.HTTP_200_OK)
-# async def add_new_item(user: AUTH_ME, data: ItemAddOrUpdateRequest):
-#     # Your processing logic here
-#     return {}
+class ItemUpdateRequest(BaseModel):
+    item_key: str
+    price: Optional[float] = Field(default=None, gt=0)
+    price_negotiable: bool = True
+    category_id: int
+    image_keys: list[str] = []
+    title: str = Field(..., min_length=1, max_length=100)
+    description: str = Field(..., min_length=1, max_length=500)

@@ -1,141 +1,190 @@
+import os
+from pathlib import Path
+import secrets
 import shutil
-from typing import Annotated, Optional
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel, Field
-from sqlalchemy import delete, select, update
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+import filetype
+from sqlalchemy import delete, func, select, update
 from app.core.database import DB
 from app.core.utils.auth import AUTH_ME
 from app.models.item import Item, ItemImage
-import secrets
-from app.core.config import core_settings
-from pathlib import Path
+from app.schemas.item import ItemAddRequest, ItemUpdateRequest
 
 
 router = APIRouter()
 
 # creates the assets directory if it doesn't exist
-UPLOAD_DIR = Path("assets/item_assets")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+STORAGE_PATH = Path("assets/item_assets")
 
 # max file size (10MB)
 MAX_ITEM_IMAGE_FILE_SIZE = 10 * 1024 * 1024  # 10MB in bytes
 MAX_IMAGES_PER_ITEM = 10
 
 
-def save_item_images(item_key: str, file: UploadFile, upload_dir: Path) -> tuple[str, str]:
-    """Saves the image and returns file key and extension."""
-    # validate_image(file)
+def save_item_images(file: UploadFile) -> list[str, str]:
+    # Read first 8192 bytes for filetype detection
+    first_chunk = file.file.read(8192)
+    file.file.seek(0)  # Reset file pointer
 
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
+    # Detect file type using filetype
+    kind = filetype.guess(first_chunk)
 
-    file.file.seek(0, 2)  # moves to end of file, to check file size without loading it to memory
+    if not kind:
+        raise HTTPException(status_code=400, detail="Could not determine file type")
+
+    # Validate if it's an image and check allowed types
+    allowed_mimes = {"image/jpeg": [".jpg", ".jpeg"], "image/png": [".png"], "image/webp": [".webp"]}
+
+    if kind.mime not in allowed_mimes:
+        raise HTTPException(status_code=400, detail=f"Unsupported image type: {kind.mime}. Allowed types: JPEG, PNG, WEBP")
+
+    # Check file size
+    file.file.seek(0, 2)
     if file.file.tell() > MAX_ITEM_IMAGE_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large")
-    file.file.seek(0)  # resets file pointer to beginning
+    file.file.seek(0)
 
+    # Generate file key and validate extension
     file_key = secrets.token_hex(16)
     file_extension = Path(file.filename).suffix.lower()
 
-    if file_extension not in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
-        raise HTTPException(status_code=400, detail="Invalid file type")
+    if file_extension not in [ext for exts in allowed_mimes.values() for ext in exts]:
+        raise HTTPException(status_code=400, detail="Invalid file extension")
 
-    #  full directory path for the item
-    item_dir = upload_dir / item_key
-    try:
-        #  directory and any necessary parent directories
-        item_dir.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create directory: {str(e)}") from e
+    # save file
+    file_path = Path(f"{STORAGE_PATH}/{file_key}{file_extension}")
 
-    # full file path
-    file_path = item_dir / f"{file_key}{file_extension}"
+    # make the dir if not available
+    file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    try:
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save image: {str(e)}") from e
+    with file.file as source_file:
+        with file_path.open("wb") as destination_file:
+            shutil.copyfileobj(source_file, destination_file)
 
     return file_key, file_extension
 
 
-def remove_item_images_directory(item_key: str, upload_dir: Path) -> None:
-    """Removes the entire directory for an item_key and all its contents."""
-    item_dir = upload_dir / item_key
-    if not item_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Directory for item '{item_key}' not found")
+def remove_item_images(image_key: str, image_extension) -> None:
+    """removes the entire directory for an item_key and all its contents."""
+    file_path = f"{STORAGE_PATH}/{image_key}{image_extension}"
     try:
-        # shutil.rmtree to remove directory and all its contents
-        shutil.rmtree(item_dir)
+        os.remove(file_path)
     except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to remove directory: {str(e)}") from e
+        raise HTTPException(status_code=500, detail=f"Failed to remove image: {str(e)}") from e
 
 
-@router.post("/add-item", status_code=status.HTTP_201_CREATED, description="Adds new item")
-def add_item(
+@router.post("/add-image", description="Adds new item image")
+def add_image(user: AUTH_ME, db: DB, image: UploadFile = File(default=None)):
+    """
+    - images are saved and registered in db
+    - temporary files will be removed if item_id is empty after 24 hours
+    """
+    file_key = None
+    file_extension = None
+
+    try:
+        file_key, file_extension = save_item_images(image)
+        item_image = ItemImage(
+            item_id=None,
+            key=file_key,
+            extension=file_extension,
+            storage_path=STORAGE_PATH,
+        )
+
+        db.add(item_image)
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+        if file_key is not None and file_extension is not None:
+            remove_item_images(file_key, file_extension)
+        raise HTTPException(status_code=500, detail=f"Failed to add image") from e
+
+
+@router.post("/remove-image", description="Removes an item image")
+def remove_image(
     user: AUTH_ME,
     db: DB,
-    # files: Optional[list[UploadFile]] = File(default=[]),
-    files: Optional[list[UploadFile]] = File(default=None),
-    price: float = Form(..., gt=0),
-    price_negotiable: bool = Form(...),
-    category_id: int = Form(...),
-    title: str = Form(...),
-    description: str = Form(...),
-    latitude: float = Form(...),
-    longitude: float = Form(...),
+    image_key: str = Form(...),
+    image: UploadFile = File(default=None),
 ):
 
-    # if files is None:
-    #     files = []
+    try:
+        item = db.scalar(select(ItemImage).where(ItemImage.key == image_key, Item.user_id == user.id))
+        if not item:
+            raise HTTPException(status_code=404, detail="Item image not found")
 
-    files = files or []
+        db.execute(delete(ItemImage).where(ItemImage.key == image_key))
+        remove_item_images(image + item.extension)
 
-    if len(files) > MAX_IMAGES_PER_ITEM:
-        raise HTTPException(status_code=400, detail=f"Maximum {MAX_IMAGES_PER_ITEM} images allowed")
+        db.commit()
 
-    item_key = None
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to remove image") from e
+
+
+@router.post("/add-item", description="Adds new item")
+def add_item(user: AUTH_ME, db: DB, data: ItemAddRequest):
+    item_key = secrets.token_hex(16)
     try:
         item = Item(
             user_id=user.id,
-            key=secrets.token_hex(16),
-            price=price,
-            price_negotiable=price_negotiable,
-            category_id=category_id,
-            title=title,
-            description=description,
-            latitude=latitude,
-            longitude=longitude,
+            key=item_key,
+            price=data.price,
+            price_negotiable=data.price_negotiable,
+            category_id=data.category_id,
+            title=data.title,
+            description=data.description,
+            latitude=data.latitude,
+            longitude=data.longitude,
         )
 
         db.add(item)
         db.flush()  # gets ID without committing
 
-        item_key = item.key
-
-        uploaded_files = []
-        for file in files:
-            file_key = secrets.token_hex(16)
-            file_key, file_extension = save_item_images(item.key, file, UPLOAD_DIR)
-            uploaded_files.append((file_key, file_extension))
-
-        for file_key, file_extension in uploaded_files:
-            item_image = ItemImage(
-                item_id=item.id,
-                key=file_key,
-                extension=file_extension,
-                source=core_settings.item_image_upload_source,
-                bucket_path="assets/item_images",
-            )
-            db.add(item_image)
+        if data.image_keys:  # Protect against None
+            stmt = update(ItemImage).where(ItemImage.key.in_(data.image_keys)).values(item_id=item.id)
+            db.execute(stmt)
 
         db.commit()
-        return {"success": True, "item_id": item.id}
+        return {"success": True, "message": "Item added successfully", "item_id": item.id}
 
-    # if any upload fails, deletes all previously uploaded files and rolls back db changes
     except Exception as e:
         db.rollback()
-        if item_key is not None:
-            remove_item_images_directory(item_key, UPLOAD_DIR)
-        raise
+        raise HTTPException(status_code=500, detail="Failed to add item") from e
+
+
+@router.post("/update-item", description="Update item info")
+def update_item(user: AUTH_ME, db: DB, data: ItemUpdateRequest):
+    try:
+        # check if item is available and belongs to this user
+        item = db.scalar(select(Item).where(Item.key == data.item_key, Item.user_id == user.id))
+        if not item:
+            raise HTTPException(status_code=404, detail="Item not found")
+
+        db.execute(
+            update(Item)
+            .where(Item.id == item.id)
+            .values(
+                price=data.price,
+                price_negotiable=data.price_negotiable,
+                category_id=data.category_id,
+                title=data.title,
+                description=data.description,
+                updated_at=func.now(),
+            )
+        )
+
+        # clean up item_ids from ItemImages
+        db.execute(update(ItemImage).where(ItemImage.item_id == item.id).values(item_id=None))
+
+        if data.image_keys:  # protects against None
+            stmt = update(ItemImage).where(ItemImage.key.in_(data.image_keys)).values(item_id=item.id)
+            db.execute(stmt)
+
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update item") from e
