@@ -1,10 +1,6 @@
-import logging
-import os
 from typing import Annotated
-from dotenv import load_dotenv
-from fastapi import Depends, HTTPException, logger, status
+from fastapi import Depends
 from sqlalchemy import create_engine
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import Session
@@ -20,6 +16,14 @@ engine = create_engine(core_settings.database_url)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+
+def db_conn():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 # def db_conn():
@@ -41,14 +45,6 @@ Base = declarative_base()
 #         db.close()
 
 
-def db_conn():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 DB = Annotated[Session, Depends(db_conn)]
 
 
@@ -56,16 +52,16 @@ DB = Annotated[Session, Depends(db_conn)]
 # session.scalars() is equivalent to session.execute().scalars()
 
 # select one
-# db.scalars(select(Item).where(Item.key == item_key)).first()
-# item = db.scalar(select(Item).where(Item.key == item_key)) #when 1 row or None expected
-# item = db.execute(select(Item).where(User.key == item_key)).scalars().first()
+# db.scalars(select(Listing).where(Listing.key == listing_key)).first()
+# listing = db.scalar(select(Listing).where(Listing.key == listing_key)) #when 1 row or None expected
+# listing = db.execute(select(Listing).where(User.key == listing_key)).scalars().first()
 
 # Get first match or None
-# item = session.scalars(select(User).where(User.key == "as!23sdf5tasdfas")).first()
+# listing = session.scalars(select(User).where(User.key == "as!23sdf5tasdfas")).first()
 
 
 # Get all matches
-# items = session.scalars(select(User).where(User.key == "as!23sdf5tasdfas")).all()
+# listings = session.scalars(select(User).where(User.key == "as!23sdf5tasdfas")).all()
 
 # SELECT IN
 # stmt = select(User).where(User.name.in_(["spongebob", "sandy"]))

@@ -7,7 +7,6 @@ class CoreSettings(BaseSettings):
     app_name: str
     database_url: str
     debug: bool = True
-    item_image_upload_source: str = "local"
 
     model_config = SettingsConfigDict(
         env_file=".env",
