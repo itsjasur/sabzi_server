@@ -7,7 +7,7 @@ import filetype
 from sqlalchemy import delete, func, select, update
 from app.core.database import DB
 from app.core.utils.auth import AUTH_ME
-from app.models.listing import Listing, ListingImage
+from app.models.listing import Listing, ListingImage, ListingStatus
 from app.schemas.listing import ListingAddRequest, ListingImageResponse, ListingStatusChange, ListingUpdateRequest
 
 
@@ -66,7 +66,7 @@ def save_listing_images(file: UploadFile) -> list[str, str]:
     return file_key, file_extension
 
 
-def remove_listing_images(file_key: str, file_extension) -> None:
+def remove_listing_image(file_key: str, file_extension) -> None:
     """removes the entire directory for an listing_key and all its contents."""
     file_path = f"{STORAGE_BUCKET}/{file_key}{file_extension}"
     try:
@@ -76,7 +76,7 @@ def remove_listing_images(file_key: str, file_extension) -> None:
 
 
 @router.post("/add-image", response_model=ListingImageResponse, description="Adds new listing image")
-def add_image(db: DB, image: UploadFile = File(...)):
+def add_image(user: AUTH_ME, db: DB, image: UploadFile = File(...)):
     """
     - images are saved and registered in db
     - temporary files will be removed if listing_id is empty after 24 hours
@@ -107,30 +107,34 @@ def add_image(db: DB, image: UploadFile = File(...)):
         print(e)
         db.rollback()
         if file_key is not None and file_extension is not None:
-            remove_listing_images(file_key, file_extension)
+            remove_listing_image(file_key, file_extension)
         raise HTTPException(status_code=500, detail=f"Failed to add image") from e
 
 
-@router.post("/remove-image", description="Removes an listing image")
-def remove_image(
-    user: AUTH_ME,
-    db: DB,
-    image_key: str = Form(...),
-    image: UploadFile = File(default=None),
-):
+@router.post("/remove-image/{item_key}", response_model=dict, description="Removes an listing image")
+def remove_image(user: AUTH_ME, db: DB, image_key: str):
 
     try:
-        listing = db.scalar(select(ListingImage).where(ListingImage.key == image_key, Listing.user_id == user.id))
-        if not listing:
+        listing_image = db.scalar(select(ListingImage).where(ListingImage.key == image_key))
+
+        if not listing_image:
             raise HTTPException(status_code=404, detail="Listing image not found")
 
-        db.execute(delete(ListingImage).where(ListingImage.key == image_key))
-        remove_listing_images(image + listing.extension)
+        if listing_image.listing_id is not None:
+            listing = db.scalar(select(Listing).where(Listing.id == listing_image.listing_id, Listing.user_id == user.id))
+            if not listing:
+                raise HTTPException(status_code=404, detail="Listing image doesn't belong to the user")
+
+        db.execute(delete(ListingImage).where(ListingImage.key == listing_image.key))
+        remove_listing_image(listing_image.key, listing_image.extension)
 
         db.commit()
 
+        return {"message": "Image deleted successfully"}
+
     except Exception as e:
         db.rollback()
+        print(e)
         raise HTTPException(status_code=500, detail=f"Failed to remove image") from e
 
 
@@ -162,6 +166,7 @@ def add_listing(user: AUTH_ME, db: DB, data: ListingAddRequest):
 
     except Exception as e:
         db.rollback()
+        print(e)
         raise HTTPException(status_code=500, detail="Failed to add listing") from e
 
 
@@ -195,28 +200,12 @@ def update_listing(user: AUTH_ME, db: DB, data: ListingUpdateRequest):
 
         db.commit()
 
+        return {"success": True, "message": "Listing updated successfully"}
+
     except Exception as e:
         db.rollback()
+        print(e)
         raise HTTPException(status_code=500, detail="Failed to update listing") from e
-
-
-@router.post("/change-status", description="Changes status and does corresponding action")
-def change_status(user: AUTH_ME, db: DB, data: ListingStatusChange):
-
-    try:
-
-        listing = db.scalar(select(Listing).where(Listing.key == data.listing_key, Listing.user_id == user.id))
-        if not listing:
-            raise HTTPException(status_code=404, detail="Listing not found")
-
-        db.execute(update(Listing).where(Listing.id == listing.id).values(status=data.status, updated_at=func.now()))
-        db.commit()
-
-        # if order status is SOLD, update the buyer info
-
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to update listing status") from e
 
 
 @router.post("/change-status", description="Changes listing status and does corresponding action")
@@ -231,7 +220,27 @@ def change_status(user: AUTH_ME, db: DB, data: ListingStatusChange):
         db.execute(update(Listing).where(Listing.id == listing.id).values(status=data.status, updated_at=func.now()))
         db.commit()
 
-        # if listing status is SOLD, update the buyer info
+        return {"success": True, "message": "Listing status changed successfully"}
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update listing status") from e
+
+
+@router.post("/delete/{listing_key}", description="Delete listing with its key")
+def change_status(user: AUTH_ME, db: DB, listing_key: str):
+
+    try:
+
+        listing = db.scalar(select(Listing).where(Listing.key == listing_key, Listing.user_id == user.id))
+        if not listing:
+            raise HTTPException(status_code=404, detail="Listing not found")
+
+        # listing is not deleted, but just status changes to deletd
+        db.execute(update(Listing).where(Listing.id == listing.id).values(status=ListingStatus.deleted, updated_at=func.now()))
+        db.commit()
+
+        return {"success": True, "message": "Listing deleted successfully"}
 
     except Exception as e:
         db.rollback()

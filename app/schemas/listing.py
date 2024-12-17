@@ -20,7 +20,7 @@ class ListingUpdateRequest(BaseModel):
     price: Optional[float] = Field(default=None, gt=0)
     price_negotiable: bool = True
     category_id: int
-    image_keys: list[str] = []
+    image_keys: Optional[list[str]] = Field(default=[])
     title: str = Field(..., min_length=1, max_length=100)
     description: str = Field(..., min_length=1, max_length=500)
 
