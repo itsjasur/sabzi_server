@@ -1,23 +1,31 @@
 # main.py
+from contextlib import asynccontextmanager
 import logging
 import os
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from app.api.router import api_router
+from app.core.database import DB
 from app.core.config import core_settings
 from fastapi.middleware.cors import CORSMiddleware
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await DB.connect()
+    yield
+    await DB.close()
+
+
 app = FastAPI(
-    title=core_settings.app_name,
+    lifespan=lifespan,
+    title="Sabzi app",
     description="Your API Description",
     version="1.0.0",
 )
-
 
 # CORS middleware
 app.add_middleware(
@@ -56,7 +64,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     # rog the error
-    logger.error(f"Unexpected error: {exc}", exc_info=True)
+    # logger.error(f"Unexpected error: {exc}", exc_info=True)
+    print("Error handler: ")
+    print(exc)
 
     # return a generic error response
     return JSONResponse(
@@ -71,7 +81,6 @@ app.include_router(api_router, prefix="/api")
 @app.get("/")
 def hi():
     env = os.getenv("ENVIRONMENT", "default_environment")
-    print(f"{core_settings.app_name} runing")
     # dbpath = os.getenv("DATABASE_URL", "www")
     # print(env)
     # print(dbpath)

@@ -1,91 +1,115 @@
-from datetime import datetime, timedelta, timezone
-import random
-import secrets
-from fastapi import APIRouter, HTTPException
-from sqlalchemy import select
-from app.core.database import DB
-from app.core.utils.auth import create_access_token
-from app.core.utils.sms import send_sms
-from app.models.user import User, UserStatus, UserVerification
-from app.schemas.auth import AuthSendCodeRequest, AuthVerifyCodeRequest, AuthVerifyCodeResponse
+# from datetime import datetime, timedelta, timezone
+# import random
+# import secrets
+# from fastapi import APIRouter, HTTPException
+# from sqlalchemy import select
+# from app.core.database import DB
+# from app.core.utils.auth import create_access_token
+# from app.core.utils.sms import send_sms
+# from app.models.user import User, UserStatus, UserVerification
+# from app.schemas.auth import *
 
 
-router = APIRouter()
+# router = APIRouter()
 
 
-@router.post("/send-code", response_model=dict)
-def login(data: AuthSendCodeRequest, db: DB):
-    # when querying by primary key (ID)
-    # user = db.get(User, 123)
+# @router.post("/check-new-user", response_model=dict)
+# def check_new_user(data: AuthSendCodeRequest, db: DB):
 
-    #  check if user exists
-    stmt = select(User).where(User.phone_number == data.phone_number)  # querying by non-primary key fields
-    user = db.execute(stmt).scalar()
+#     stmt = select(User).where(User.phone_number == data.phone_number)
+#     user = db.execute(stmt).scalar()
 
-    #  check if user doesn't exist add new user
-    if not user:
-        user = User(phone_number=data.phone_number)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+#     if not user:
+#         return {"is_new_user": True}
 
-    stmt = select(UserVerification).where(
-        UserVerification.user_id == user.id,
-        UserVerification.phone_number == data.phone_number,
-        UserVerification.expires_at > datetime.now(timezone.utc),
-    )
-
-    verification: UserVerification | None = db.execute(stmt).scalar()
-
-    # verification token to prevent brute attack phone number checks (session identifier)
-    verification_token: str = secrets.token_urlsafe(32)
-
-    if not verification:
-        verification = UserVerification(
-            user_id=user.id,
-            phone_number=data.phone_number,
-            verification_code=str(random.randint(100000, 999999)),
-            verification_token=verification_token,
-        )
-        db.add(verification)
-        db.commit()
-        db.refresh(verification)
-
-    # send SMS here to user phone number
-    send_sms(data.phone_number)
-
-    return {
-        "details": "Verification code is sent. Plese check SMS history",
-        "verification_token": verification_token,
-        "tem_code": verification.verification_code,
-    }
+#     return {"is_new_user": False}
 
 
-@router.post("/verify-code", response_model=AuthVerifyCodeResponse)
-def verify_code(data: AuthVerifyCodeRequest, db: DB):
+# @router.post("/send-code", response_model=dict)
+# def send_code(data: AuthSendCodeRequest, db: DB):
+#     print(data.model_dump())
 
-    stmt = select(UserVerification).where(UserVerification.verification_token == data.verification_token, UserVerification.attempts > 0)
+#     # check if user exists
+#     stmt = select(User).where(User.phone_number == data.phone_number)
+#     user = db.execute(stmt).scalar()
 
-    verification: UserVerification | None = db.execute(stmt).scalar()
+#     # check if user doesn't exist add new user
+#     if not user:
+#         user = User(
+#             phone_number=data.phone_number,
+#             is_agree_to_marketing_terms=data.is_agree_to_marketing_terms,
+#         )
+#         db.add(user)
+#         db.commit()
+#         db.refresh(user)
 
-    if not verification:
-        raise HTTPException(status_code=400, detail="Invalid verification request")
+#     # Generate new verification
+#     verification_token = secrets.token_urlsafe(32)
+#     # verification_code = str(random.randint(100000, 999999))
+#     verification_code = str(111111)
+#     verification = UserVerification(
+#         user_id=user.id,
+#         phone_number=data.phone_number,
+#         verification_code=verification_code,
+#         verification_token=verification_token,
+#     )
+#     db.add(verification)
+#     db.commit()
+#     db.refresh(verification)
 
-    if verification.expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="Verification code is expired")
+#     # Send SMS with the verification code (whether new or existing)
+#     send_sms(data.phone_number, verification_code)
 
-    # checks the code
-    if verification.verification_code != data.verification_code:
-        verification.attempts -= 1
-        db.commit()
-        raise HTTPException(status_code=400, detail=f"Invalid code. {verification.attempts} attempts remaining")
+#     return {
+#         "details": "Verification code is sent. Please check SMS history",
+#         "verification_token": verification_token,
+#         "tem_code": verification.verification_code,
+#     }
 
-    # update user status to active
-    user = db.get(User, verification.user_id)
-    if user:
-        user.status = UserStatus.verified
-        db.commit()
 
-    access_token: str = create_access_token({"user_id": verification.user_id})
+# @router.post("/verify-code", response_model=dict)
+# def verify_code(data: AuthVerifyCodeRequest, db: DB):
+#     print(data.model_dump())
 
-    return AuthVerifyCodeResponse(access_token=access_token, is_new_user=True)
+#     # Include expiration check in initial query
+#     stmt = (
+#         select(UserVerification)
+#         .where(
+#             UserVerification.verification_token == data.verification_token,
+#             UserVerification.attempts > 0,
+#             UserVerification.expires_at > datetime.now(timezone.utc),
+#         )
+#         .with_for_update()
+#     )
+
+#     verification: UserVerification | None = db.execute(stmt).scalar()
+
+#     if not verification:
+#         raise HTTPException(status_code=404, detail="INVALID_OR_EXPIRED_TOKEN")
+
+#     verification.attempts -= 1
+#     db.commit()
+
+#     # reject immediately
+#     if verification.attempts == 0:
+#         raise HTTPException(status_code=404, detail="INVALID_OR_EXPIRED_TOKEN")
+
+#     # checks the code
+#     if verification.verification_code != data.verification_code:
+#         raise HTTPException(
+#             status_code=400,
+#             detail=f"INVALID_CODE_ATTEMPTS_{verification.attempts}",
+#         )
+
+#     user = db.get(User, verification.user_id)
+#     if not user:
+#         raise HTTPException(status_code=400, detail="USER_NOT_FOUND")
+
+#     # successful verification
+#     user.status = UserStatus.verified
+#     verification.attempts = 0
+#     db.commit()
+
+#     access_token: str = create_access_token({"user_id": verification.user_id})
+
+#     return {"access_token": access_token}

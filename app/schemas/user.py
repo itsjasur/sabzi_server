@@ -1,23 +1,20 @@
-from pydantic import BaseModel, Field
-from app.models.user import UserStatus
+# from typing import Optional
+# from pydantic import BaseModel, EmailStr
 
 
-class UserInfo(BaseModel):
-    id: int
+# class UserCreate(BaseModel):
+#     email: EmailStr
+#     username: str
+#     password: str
 
 
-# for updating user information
-class UserPhoneNumberUpdate(BaseModel):
-    id: int
-    phone_number: str = Field(..., min_length=1, max_length=10)
+# class UserUpdate(BaseModel):
+#     email: Optional[EmailStr] = None
+#     username: Optional[str] = None
 
 
-# for returning user information
-class UserResponse(BaseModel):
-    id: int
-    username: str | None
-    phone_number: str
-    status: UserStatus
-
-    class Config:
-        from_attributes = True
+# class UserResponse(BaseModel):
+#     id: str
+#     email: EmailStr
+#     username: str
+#     is_active: bool

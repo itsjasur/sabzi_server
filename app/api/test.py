@@ -1,28 +1,28 @@
-from fastapi import APIRouter
-from sqlalchemy import select
+# from fastapi import APIRouter
+# from sqlalchemy import select
 
-from app.core.database import DB
-from app.models.listing import ListingImage
-
-
-router = APIRouter()
+# from app.core.database import DB
+# from app.models.listing import ListingImage
 
 
-@router.get("/tt", response_model=dict)
-def test_listing(db: DB):
-    print("test endpoint called")
+# router = APIRouter()
 
-    #   stmt = select(User).where(User.age >= min_age).order_by(User.name)
-    #     result = session.execute(stmt)
 
-    listings: list[ListingImage] = db.scalars(select(ListingImage).where(ListingImage.listing_id == 1)).all()
+# @router.get("/tt", response_model=dict)
+# def test_listing(db: DB):
+#     print("test endpoint called")
 
-    # query = select(ListingImage).where(ListingImage.listing_id == 12)
-    # result = db.execute(query).scalars().all()
-    # print(result)
+#     #   stmt = select(User).where(User.age >= min_age).order_by(User.name)
+#     #     result = session.execute(stmt)
 
-    print(listings)
-    for i in listings:
-        print(i)
+#     listings: list[ListingImage] = db.scalars(select(ListingImage).where(ListingImage.listing_id == 1)).all()
 
-    return {}
+#     # query = select(ListingImage).where(ListingImage.listing_id == 12)
+#     # result = db.execute(query).scalars().all()
+#     # print(result)
+
+#     print(listings)
+#     for i in listings:
+#         print(i)
+
+#     return {}
