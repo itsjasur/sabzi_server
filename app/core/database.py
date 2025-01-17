@@ -1,34 +1,50 @@
+import os
 from typing import Optional
-from annotated_types import T
-from bson import ObjectId
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
-from app.core.config import core_settings
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorCollection
 from pymongo.errors import ConnectionFailure
+
+DATABASE_URL = os.getenv("MONGO_URL", "mongodb://127.0.0.1:27017")
 
 
 class Database:
-
-    client: AsyncIOMotorClient = None
-    database: AsyncIOMotorClient = None
+    def __init__(self, url: str = DATABASE_URL):
+        self.url = url
+        self.client: Optional[AsyncIOMotorClient] = None
+        self.db: Optional[AsyncIOMotorDatabase] = None
 
     async def connect(self):
         try:
-            self.client = AsyncIOMotorClient("mongodb://127.0.0.1:27017")
+            self.client = AsyncIOMotorClient(
+                self.url,
+                minPoolSize=10,
+                maxPoolSize=100,
+                serverSelectionTimeoutMS=5000,
+            )
+            self.db = self.client["sabzi_db"]
             # await self.client.admin.command("ping")
-            self.database = self.client["sabzi_db"]
-
         except ConnectionFailure as e:
+            # logger.error(f"Database connection failed: {e}")
             raise
 
     async def close(self):
-        if self.client is not None:
+        if self.client:
             self.client.close()
 
-    def get_collection(self, collection_name: str) -> AsyncIOMotorCollection:
-        if self.database is not None:
-            return self.database[collection_name]
-        else:
+    @property
+    def users(self) -> AsyncIOMotorCollection:
+        if self.db is None:
             raise ConnectionError("Database not connected")
+        return self.db["users"]
+
+    @property
+    def verifications(self) -> AsyncIOMotorCollection:
+        if self.db is None:
+            raise ConnectionError("Database not connected")
+        return self.db["verifications"]
 
 
-DB = Database()
+database = Database()
+
+
+async def get_database() -> Database:
+    return database

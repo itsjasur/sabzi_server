@@ -5,7 +5,7 @@
 # from fastapi import APIRouter, File, HTTPException, UploadFile
 # import filetype
 # from sqlalchemy import delete, func, select, update
-# from app.core.database import DB
+# from app.core.database import db_conn
 # from app.core.utils.auth import AUTH_ME
 # from app.models.listing import Listing, ListingImage, ListingStatus
 # from app.schemas.listing import ListingAddRequest, ListingImageInfo, ListingInfo, ListingStatusChange, ListingUpdateRequest
@@ -76,7 +76,7 @@
 
 
 # @router.post("/add-image", response_model=ListingImageInfo, description="Adds new listing image")
-# def add_image(user: AUTH_ME, db: DB, image: UploadFile = File(...)):
+# def add_image(user: AUTH_ME, db: db_conn, image: UploadFile = File(...)):
 #     """
 #     - images are saved and registered in db
 #     - temporary files will be removed if listing_id is empty after 24 hours
@@ -108,7 +108,7 @@
 
 
 # @router.post("/remove-image/{image_key}", response_model=dict, description="Removes an listing image")
-# def remove_image(user: AUTH_ME, db: DB, image_key: str):
+# def remove_image(user: AUTH_ME, db: db_conn, image_key: str):
 
 #     try:
 #         listing_image = db.scalar(select(ListingImage).where(ListingImage.key == image_key))
@@ -135,7 +135,7 @@
 
 
 # @router.post("/add", description="Adds new listing")
-# def add_listing(user: AUTH_ME, db: DB, data: ListingAddRequest):
+# def add_listing(user: AUTH_ME, db: db_conn, data: ListingAddRequest):
 #     listing_key = secrets.token_hex(16)
 #     try:
 #         listing = Listing(
@@ -167,7 +167,7 @@
 
 
 # @router.post("/update", description="Update listing info")
-# def update_listing(user: AUTH_ME, db: DB, data: ListingUpdateRequest):
+# def update_listing(user: AUTH_ME, db: db_conn, data: ListingUpdateRequest):
 #     try:
 #         # check if listing is available and belongs to this user
 #         listing = db.scalar(select(Listing).where(Listing.key == data.listing_key, Listing.user_id == user.id))
@@ -205,7 +205,7 @@
 
 
 # @router.post("/change-status", description="Changes listing status and does corresponding action")
-# def change_status(user: AUTH_ME, db: DB, data: ListingStatusChange):
+# def change_status(user: AUTH_ME, db: db_conn, data: ListingStatusChange):
 
 #     try:
 
@@ -224,7 +224,7 @@
 
 
 # @router.post("/delete/{listing_key}", description="Delete listing with its key")
-# def change_status(user: AUTH_ME, db: DB, listing_key: str):
+# def change_status(user: AUTH_ME, db: db_conn, listing_key: str):
 #     try:
 #         listing = db.scalar(select(Listing).where(Listing.key == listing_key, Listing.user_id == user.id))
 #         if not listing:
@@ -243,7 +243,7 @@
 
 
 # @router.post("/info/{listing_key}", response_model=ListingInfo, description="Fetches listing info")
-# def fetch_listings(user: AUTH_ME, db: DB, listing_key: str):
+# def fetch_listings(user: AUTH_ME, db: db_conn, listing_key: str):
 #     try:
 #         listing = db.scalar(select(Listing).where(Listing.key == listing_key, Listing.user_id == user.id))
 #         if not listing:

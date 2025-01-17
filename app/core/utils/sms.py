@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from fastapi import status
 
 
-def send_sms(phone_number: str, verification_code: str) -> bool:
+async def send_sms(phone_number: str, verification_code: int) -> bool:
     try:
         return True
 

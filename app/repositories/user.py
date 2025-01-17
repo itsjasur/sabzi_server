@@ -1,84 +1,87 @@
-from datetime import datetime, timezone
-from typing import Optional
-
+from datetime import datetime, timedelta, timezone
 from bson import ObjectId
-from fastapi import HTTPException
-from app.core.database import DB
-from app.models.user import UserCreate, UserResponse
+from fastapi import Depends, HTTPException
+
+from app.core.database import Database, database, get_database
+from app.models.user import UserStatus, Verification, User
 
 
 class UserRepository:
-    @staticmethod
-    async def get_user_by_id(user_id: str) -> UserResponse:
+    def __init__(self, database: Database = Depends(get_database)):
+        self.database = database
+        self.collection = database.users
 
-        collection = DB.get_collection("users")
-        doc = await collection.find_one({"_id": ObjectId(oid=user_id)})
+    async def get_user_by_id(self, id: str) -> User | None:
+        doc = await self.collection.find_one({"_id": ObjectId(oid=id)})
+        return doc
 
-        user = UserResponse(**doc, id=doc["_id"])
+    async def get_user_by_phone_number(self, phone_number: str) -> User | None:
+        doc = await self.collection.find_one({"phone_number": phone_number})
 
+        if not doc:
+            return None
+
+        user = User(**doc)
         return user
 
-    @staticmethod
-    async def create_user(user: UserCreate) -> ObjectId:
 
-        user_dict = user.model_dump(by_alias=True)
+class VerificationRepository:
+    def __init__(self, database: Database = Depends(get_database)):
+        self.database = database
+        self.collection = database.verifications
 
-        collection = DB.get_collection("users")
-        result = await collection.insert_one(user_dict)
+    async def add_verification(self, verification: Verification) -> str:
+        dict = verification.model_dump(by_alias=True)
+        result = await self.collection.insert_one(dict)
+        return str(result.inserted_id)
 
-        print(result)
+    async def check_verification_limit(self, phone_number: str) -> bool:
+        five_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=5)
 
-        return result.inserted_id
+        count = await self.collection.count_documents(
+            {
+                "phone_number": phone_number,
+                "created_date": {"$gte": five_minutes_ago},
+            }
+        )
 
-    @staticmethod
-    async def get_users() -> list[UserResponse]:
-        users: list[UserResponse] = []
+        return count >= 5
 
-        collection = DB.get_collection("users")
-        documents = await collection.find({}).to_list()
+    async def get_verification_by_id(self, id: str) -> Verification:
+        doc = await self.collection.find_one({"_id": ObjectId(oid=id)})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"INVALID_OR_EXPIRED_TOKEN")
+        return Verification(**doc)
 
-        users = [UserResponse(**doc, id=doc["_id"]) for doc in documents]
+    async def decrement_attempts(self, id: ObjectId) -> bool:
+        result = await self.collection.update_one(
+            {"_id": id},
+            {"$inc": {"attempts": -1}},
+        )
 
-        return users
+    async def get_verification_by_token(self, token: str) -> Verification:
+        doc = await self.collection.find_one({"token": token})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"INVALID_REQUEST")
+            # return None
+        return Verification(**doc)
 
+    async def update_verification(self, verification: Verification) -> bool:
+        result = await self.collection.update_one(
+            {"_id": verification.id},
+            {"$set": verification.model_dump(exclude={"id"})},
+        )
 
-#
-#
-#
-#
-# @staticmethod
-# async def get_user(user_id: str) -> Optional[User]:
-#     user = await DB.database["users"].find_one({"_id": ObjectId(user_id)})
-#     return User(**user) if user else None
+    async def get_random_usernames(self) -> list:
+        result = await database.users.aggregate(
+            [
+                # Stage 1: filters for active users only
+                {"$match": {"status": UserStatus.verified.value}},
+                # Stage 2: get random sample
+                {"$sample": {"size": 20}},
+                # Stage 3: project only the username field
+                {"$project": {"username": 1, "_id": 0}},
+            ]
+        ).to_list()
 
-# @staticmethod
-# async def get_users(skip: int = 0, limit: int = 100) -> list[User]:
-#     users = []
-#     cursor = DB.database["users"].find().skip(skip).limit(limit)
-#     async for document in cursor:
-#         users.append(User(**document))
-#     return users
-
-# @staticmethod
-# async def update_user(user_id: str, update_data: dict) -> bool:
-#     result = await DB.database["users"].update_one({"_id": ObjectId(user_id)}, {"$set": update_data})
-#     return result.modified_count > 0
-
-# @staticmethod
-# async def delete_user(user_id: str) -> bool:
-#     result = await DB.database["users"].delete_one({"_id": ObjectId(user_id)})
-#     return result.deleted_count > 0
-
-# # Example of method using multiple collections
-# @staticmethod
-# async def get_user_with_posts(user_id: str) -> Optional[dict]:
-#     user = await DB.database["users"].find_one({"_id": ObjectId(user_id)})
-#     if not user:
-#         return None
-
-#     posts = []
-#     cursor = DB.database["posts"].find({"user_id": ObjectId(user_id)})
-#     async for post in cursor:
-#         posts.append(post)
-
-#     return {"user": User(**user), "posts": posts}
+        return result

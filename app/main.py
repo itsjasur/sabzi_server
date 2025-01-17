@@ -8,16 +8,18 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from app.api.router import api_router
-from app.core.database import DB
+from app.core.database import database
 from app.core.config import core_settings
 from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await DB.connect()
+    # Database connection on startup
+    await database.connect()
     yield
-    await DB.close()
+    # Cleanup on shutdown
+    await database.close()
 
 
 app = FastAPI(
@@ -26,6 +28,7 @@ app = FastAPI(
     description="Your API Description",
     version="1.0.0",
 )
+
 
 # CORS middleware
 app.add_middleware(

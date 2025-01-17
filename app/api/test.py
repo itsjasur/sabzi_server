@@ -1,7 +1,7 @@
 # from fastapi import APIRouter
 # from sqlalchemy import select
 
-# from app.core.database import DB
+# from app.core.database import db_conn
 # from app.models.listing import ListingImage
 
 
@@ -9,7 +9,7 @@
 
 
 # @router.get("/tt", response_model=dict)
-# def test_listing(db: DB):
+# def test_listing(db: db_conn):
 #     print("test endpoint called")
 
 #     #   stmt = select(User).where(User.age >= min_age).order_by(User.name)

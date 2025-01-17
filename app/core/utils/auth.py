@@ -6,7 +6,7 @@
 # from passlib.context import CryptContext
 # from sqlalchemy import select
 
-# from app.core.database import DB
+# from app.core.database import db_conn
 # from app.models.user import User
 
 
@@ -28,7 +28,7 @@
 #     return encoded_jwt
 
 
-# # def authorize_me(credentials: Annotated[HTTPAuthorizationCredentials, Security(security)], db: DB) -> User:
+# # def authorize_me(credentials: Annotated[HTTPAuthorizationCredentials, Security(security)], db: db_conn) -> User:
 
 # #     credentials_exception = HTTPException(
 # #         status_code=401,
@@ -53,7 +53,7 @@
 # #     return user
 
 
-# def authorize_me(db: DB) -> User:
+# def authorize_me(db: db_conn) -> User:
 
 #     user = db.get(User, 1)
 
